@@ -58,17 +58,17 @@ final class UsageHistoryFetcherTests: XCTestCase {
         ).fetch()
 
         XCTAssertTrue(result.anySourceReadable)
-        XCTAssertEqual(result.buckets.reduce(0) { $0 + $1.openAIInputTokens }, 0)
+        XCTAssertEqual(result.buckets.reduce(0) { $0 + $1.openAIInputTokens }, 10)
         XCTAssertEqual(result.buckets.reduce(0) { $0 + $1.deepseekInputTokens }, 25)
     }
 
     func testHermesExtractionMapsProvidersAtLastSeen() throws {
         let db = root.appendingPathComponent("hermes.db")
         try makeDatabase(at: db, statements: [
-            "CREATE TABLE session_model_usage (billing_provider TEXT, input_tokens INTEGER, cache_read_tokens INTEGER, cache_write_tokens INTEGER, last_seen INTEGER)",
-            "INSERT INTO session_model_usage VALUES ('openai-codex', 8, 2, 1, \(seconds(hoursAgo: 1)))",
-            "INSERT INTO session_model_usage VALUES ('deepseek', 20, 3, 2, \(seconds(hoursAgo: 2)))",
-            "INSERT INTO session_model_usage VALUES ('other', 999, 0, 0, \(seconds(hoursAgo: 1)))"
+            "CREATE TABLE session_model_usage (model TEXT, billing_provider TEXT, input_tokens INTEGER, cache_read_tokens INTEGER, cache_write_tokens INTEGER, last_seen INTEGER)",
+            "INSERT INTO session_model_usage VALUES ('gpt-6.1-sol', 'openai-codex', 8, 2, 1, \(seconds(hoursAgo: 1)))",
+            "INSERT INTO session_model_usage VALUES ('deepseek-flash', 'deepseek', 20, 3, 2, \(seconds(hoursAgo: 2)))",
+            "INSERT INTO session_model_usage VALUES ('other', 'other', 999, 0, 0, \(seconds(hoursAgo: 1)))"
         ])
 
         let result = UsageHistoryFetcher(
@@ -79,11 +79,11 @@ final class UsageHistoryFetcherTests: XCTestCase {
         ).fetch()
 
         XCTAssertTrue(result.anySourceReadable)
-        XCTAssertEqual(result.buckets.reduce(0) { $0 + $1.openAIInputTokens }, 0)
+        XCTAssertEqual(result.buckets.reduce(0) { $0 + $1.openAIInputTokens }, 8)
         XCTAssertEqual(result.buckets.reduce(0) { $0 + $1.deepseekInputTokens }, 25)
     }
 
-    func testCodexOnlyHistoryIsUnavailableToKeepOpenAISeriesLedgerOwned() throws {
+    func testMissingSourcesAreUnavailableButPresentEmptyCodexIsReadable() throws {
         let missing = root.appendingPathComponent("missing")
         let unavailable = UsageHistoryFetcher(
             now: now,
@@ -101,7 +101,7 @@ final class UsageHistoryFetcherTests: XCTestCase {
             hermesDatabasePath: missing.path,
             codexRoots: [emptyRoot]
         ).fetch()
-        XCTAssertFalse(readable.anySourceReadable)
+        XCTAssertTrue(readable.anySourceReadable)
         XCTAssertEqual(readable.buckets.count, 720)
         XCTAssertTrue(readable.buckets.allSatisfy { $0.openAIInputTokens == 0 && $0.deepseekInputTokens == 0 })
     }

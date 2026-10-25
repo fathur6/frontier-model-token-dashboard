@@ -11,14 +11,15 @@ class MenuBarState {
     var deepseekBalance: Double?
     var minimaxBalance: Double?
     var openAIQuota: OpenAIQuota?
-    var openAIEstimatedCost = 0.0
+    var openAIEstimatedCost: Double?
+    var usageHistoryWarning: String?
     var hourlyUsage: [HourlyUsageBucket] = []
     var deepseekBalanceHistory: [DeepSeekBalanceSnapshot] = []
     var openAIQuotaHistory: [OpenAIQuotaSnapshot] = []
     var lastUpdated: Date?
-    private let estimatedCost: @MainActor (Date) -> Double
+    private let estimatedCost: @MainActor (Date) -> Double?
 
-    init(estimatedCost: @escaping @MainActor (Date) -> Double = { resetDate in
+    init(estimatedCost: @escaping @MainActor (Date) -> Double? = { resetDate in
         QuotaLedgerService.shared.activeOpenAIEstimatedCost(resetDate: resetDate)
     }) {
         self.estimatedCost = estimatedCost
@@ -30,8 +31,9 @@ class MenuBarState {
         openAIQuota = cache.openAIQuota
         if let resetDate = cache.openAIQuota?.resetDate {
             openAIEstimatedCost = estimatedCost(resetDate)
-        }
+        } else { openAIEstimatedCost = nil }
         hourlyUsage = cache.hourlyUsage
+        usageHistoryWarning = cache.usageHistoryWarning
         deepseekBalanceHistory = cache.deepseekBalanceHistory
         openAIQuotaHistory = cache.openAIQuotaHistory
         lastUpdated = cache.lastUpdated
@@ -120,7 +122,8 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     private func refreshData() {
         Task { [weak self] in
             let cache = await DataFetcher.refreshAll()
-            QuotaLedgerService.shared.recordRefresh(cache: cache)
+            let usage = await Task.detached { LocalUsageReader().fetch() }.value
+            QuotaLedgerService.shared.recordRefresh(cache: cache, usage: usage)
             await QuotaLedgerService.shared.runMonthlyReportIfDue()
             let seeded = QuotaLedgerService.shared.seededCache(from: cache)
             DataStore.save(cache: seeded)
@@ -186,8 +189,9 @@ struct MenuContent: View {
         return "Resets " + date.formatted(.dateTime.month(.abbreviated).day().hour().minute())
     }
 
-    static func estimatedCostText(_ cost: Double) -> String {
-        String(format: "Est. $%.2f", cost)
+    static func estimatedCostText(_ cost: Double?) -> String {
+        guard let cost, cost.isFinite else { return "Est. unavailable" }
+        return String(format: "Est. $%.2f", cost)
     }
 
     static func elapsedText(resetDate: Date?, now: Date = Date()) -> String? {
@@ -292,6 +296,11 @@ struct MenuContent: View {
                 .padding(.horizontal, 12)
                 .padding(.top, 4)
 
+            if let warning = menuState.usageHistoryWarning {
+                Text(warning).font(.caption2).foregroundStyle(.secondary)
+                    .padding(.horizontal, 12).padding(.top, 4)
+            }
+
             RemainingQuotaChart(
                 deepseekSnapshots: balanceSnapshots,
                 openAISnapshots: openAISnapshots,
@@ -352,7 +361,8 @@ struct MenuContent: View {
     private func refreshData() {
         Task {
             let cache = await DataFetcher.refreshAll()
-            QuotaLedgerService.shared.recordRefresh(cache: cache)
+            let usage = await Task.detached { LocalUsageReader().fetch() }.value
+            QuotaLedgerService.shared.recordRefresh(cache: cache, usage: usage)
             await QuotaLedgerService.shared.runMonthlyReportIfDue()
             let seeded = QuotaLedgerService.shared.seededCache(from: cache)
             DataStore.save(cache: seeded)

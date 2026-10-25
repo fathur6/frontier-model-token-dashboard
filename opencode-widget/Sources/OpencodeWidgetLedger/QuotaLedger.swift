@@ -51,6 +51,18 @@ public final class QuotaLedger {
           yyyy_mm TEXT PRIMARY KEY,
           emailed_at TEXT
         );
+        CREATE TABLE IF NOT EXISTS usage_observations(
+          source TEXT NOT NULL, id TEXT NOT NULL, provider TEXT NOT NULL,
+          session_id TEXT NOT NULL, request_id TEXT NOT NULL,
+          hour TEXT NOT NULL, tokens INTEGER NOT NULL, cost REAL,
+          PRIMARY KEY(source,id)
+        );
+        CREATE TABLE IF NOT EXISTS usage_managed_hours(
+          hour TEXT NOT NULL, provider TEXT NOT NULL, PRIMARY KEY(hour,provider)
+        );
+        CREATE TABLE IF NOT EXISTS usage_source_state(
+          source TEXT PRIMARY KEY, observed_through REAL NOT NULL
+        );
         """
         guard sqlite3_exec(db, schema, nil, nil, nil) == SQLITE_OK else { return false }
         var statement: OpaquePointer?
@@ -128,7 +140,9 @@ public final class QuotaLedger {
           openai_percent = COALESCE(excluded.openai_percent, quota_snapshots.openai_percent),
           deepseek_input_tokens = COALESCE(excluded.deepseek_input_tokens, quota_snapshots.deepseek_input_tokens),
           openai_input_tokens = COALESCE(excluded.openai_input_tokens, quota_snapshots.openai_input_tokens),
-          openai_estimated_cost_usd = COALESCE(excluded.openai_estimated_cost_usd, quota_snapshots.openai_estimated_cost_usd),
+           openai_estimated_cost_usd = CASE WHEN excluded.openai_input_tokens IS NOT NULL
+             THEN excluded.openai_estimated_cost_usd
+             ELSE COALESCE(excluded.openai_estimated_cost_usd, quota_snapshots.openai_estimated_cost_usd) END,
           openai_five_hour_percent = COALESCE(excluded.openai_five_hour_percent, quota_snapshots.openai_five_hour_percent),
           openai_five_hour_reset_at = COALESCE(excluded.openai_five_hour_reset_at, quota_snapshots.openai_five_hour_reset_at),
           source = excluded.source,
@@ -191,6 +205,9 @@ public final class QuotaLedger {
         bindText(stmt, index: 1, cutoffStr)
         sqlite3_step(stmt)
         sqlite3_finalize(stmt)
+        for table in ["usage_observations", "usage_managed_hours"] {
+            try? usageWrite("DELETE FROM \(table) WHERE hour < ?") { bindText($0, index: 1, cutoffStr) }
+        }
     }
 
     public func rows(from: Date, to: Date) -> [QuotaSnapshotRow] {
@@ -257,15 +274,165 @@ public final class QuotaLedger {
         return n
     }
 
-    public func activeOpenAIEstimatedCost(from start: Date, through end: Date) -> Double {
-        guard let db else { return 0 }
-        let sql = "SELECT COALESCE(SUM(openai_estimated_cost_usd), 0) FROM quota_snapshots WHERE hour >= ? AND hour <= ?"
+    public func activeOpenAIEstimatedCost(from start: Date, through end: Date) -> Double? {
+        guard let db else { return nil }
+        let sql = """
+            SELECT CASE WHEN SUM(CASE WHEN openai_input_tokens IS NOT NULL AND openai_estimated_cost_usd IS NULL THEN 1 ELSE 0 END) > 0
+              THEN NULL ELSE COALESCE(SUM(openai_estimated_cost_usd), 0) END
+            FROM quota_snapshots WHERE hour >= ? AND hour <= ?
+            """
         var statement: OpaquePointer?
-        guard sqlite3_prepare_v2(db, sql, -1, &statement, nil) == SQLITE_OK else { return 0 }
+        guard sqlite3_prepare_v2(db, sql, -1, &statement, nil) == SQLITE_OK else { return nil }
         defer { sqlite3_finalize(statement) }
         bindText(statement, index: 1, iso(start))
         bindText(statement, index: 2, iso(end))
-        return sqlite3_step(statement) == SQLITE_ROW ? sqlite3_column_double(statement, 0) : 0
+        guard sqlite3_step(statement) == SQLITE_ROW, sqlite3_column_type(statement, 0) != SQLITE_NULL else { return nil }
+        return sqlite3_column_double(statement, 0)
+    }
+
+    /// Reconcile complete source snapshots, not incremental hourly additions.
+    /// Failed/missing sources keep their last durable contributions. In particular
+    /// a Hermes cumulative row that changes last_seen MOVES instead of doubling.
+    /// All provenance and hourly projections commit together, or neither changes.
+    @discardableResult
+    public func reconcileUsage(_ snapshot: LocalUsageSnapshot) -> Bool {
+        guard let db, snapshot.anyAvailable,
+              snapshot.from <= snapshot.through,
+              Set(snapshot.batches.map(\.source)).count == snapshot.batches.count,
+              sqlite3_exec(db, "BEGIN IMMEDIATE", nil, nil, nil) == SQLITE_OK else { return false }
+        var committed = false
+        defer { if !committed { sqlite3_exec(db, "ROLLBACK", nil, nil, nil) } }
+        do {
+            for batch in snapshot.batches where batch.availability == .available {
+                var latest = -Double.greatestFiniteMagnitude
+                try usageRead("SELECT source,observed_through FROM usage_source_state") { stmt in
+                    if sqliteText(stmt, index: 0) == batch.source.rawValue { latest = sqlite3_column_double(stmt, 1) }
+                }
+                // A slow older refresh must not replace a newer source snapshot.
+                if snapshot.through.timeIntervalSince1970 < latest { continue }
+                try usageWrite("DELETE FROM usage_observations WHERE source=? AND hour>=? AND hour<=?") { stmt in
+                    bindText(stmt, index: 1, batch.source.rawValue)
+                    bindText(stmt, index: 2, iso(flooredHour(snapshot.from)))
+                    bindText(stmt, index: 3, iso(flooredHour(snapshot.through)))
+                }
+                for observation in batch.observations {
+                    guard observation.source == batch.source, !observation.id.isEmpty,
+                          observation.tokens >= 0, observation.hour.timeIntervalSince1970.isFinite,
+                          observation.hour >= flooredHour(snapshot.from), observation.hour <= snapshot.through,
+                          observation.estimatedCostUSD.map({ $0.isFinite && $0 >= 0 }) ?? true else { throw UsageWriteFailure.invalid }
+                    try usageWrite("""
+                        INSERT INTO usage_observations(source,id,provider,session_id,request_id,hour,tokens,cost)
+                        VALUES(?,?,?,?,?,?,?,?) ON CONFLICT(source,id) DO UPDATE SET
+                          provider=excluded.provider,session_id=excluded.session_id,request_id=excluded.request_id,
+                          hour=excluded.hour,tokens=excluded.tokens,cost=excluded.cost
+                        """) { stmt in
+                        bindText(stmt, index: 1, observation.source.rawValue)
+                        bindText(stmt, index: 2, observation.id)
+                        bindText(stmt, index: 3, observation.provider.rawValue)
+                        bindText(stmt, index: 4, observation.sessionID)
+                        bindText(stmt, index: 5, observation.requestID)
+                        bindText(stmt, index: 6, iso(observation.hour))
+                        sqlite3_bind_int64(stmt, 7, Int64(observation.tokens))
+                        if let cost = observation.estimatedCostUSD { sqlite3_bind_double(stmt, 8, cost) }
+                    }
+                }
+                try usageWrite("INSERT INTO usage_source_state(source,observed_through) VALUES(?,?) ON CONFLICT(source) DO UPDATE SET observed_through=excluded.observed_through") { stmt in
+                    bindText(stmt, index: 1, batch.source.rawValue)
+                    sqlite3_bind_double(stmt, 2, snapshot.through.timeIntervalSince1970)
+                }
+            }
+            try projectUsage(preserveLegacy: snapshot.hasFailures)
+            guard sqlite3_exec(db, "COMMIT", nil, nil, nil) == SQLITE_OK else { throw UsageWriteFailure.invalid }
+            committed = true
+            return true
+        } catch { return false }
+    }
+
+    private enum UsageWriteFailure: Error { case invalid }
+
+    private func usageWrite(_ sql: String, bind: (OpaquePointer) -> Void) throws {
+        guard let db else { throw UsageWriteFailure.invalid }
+        var statement: OpaquePointer?
+        guard sqlite3_prepare_v2(db, sql, -1, &statement, nil) == SQLITE_OK, let statement else { throw UsageWriteFailure.invalid }
+        defer { sqlite3_finalize(statement) }
+        bind(statement)
+        guard sqlite3_step(statement) == SQLITE_DONE else { throw UsageWriteFailure.invalid }
+    }
+
+    private func usageRead(_ sql: String, row: (OpaquePointer) throws -> Void) throws {
+        guard let db else { throw UsageWriteFailure.invalid }
+        var statement: OpaquePointer?
+        guard sqlite3_prepare_v2(db, sql, -1, &statement, nil) == SQLITE_OK, let statement else { throw UsageWriteFailure.invalid }
+        defer { sqlite3_finalize(statement) }
+        var status = sqlite3_step(statement)
+        while status == SQLITE_ROW {
+            try row(statement)
+            status = sqlite3_step(statement)
+        }
+        guard status == SQLITE_DONE else { throw UsageWriteFailure.invalid }
+    }
+
+    private func projectUsage(preserveLegacy: Bool) throws {
+        struct Key: Hashable { let hour: String; let provider: LocalUsageProvider }
+        struct Total { var tokens = 0; var cost: Double? = 0 }
+        var observations: [LocalUsageObservation] = []
+        try usageRead("SELECT source,id,provider,session_id,request_id,hour,tokens,cost FROM usage_observations") { stmt in
+            guard let source = LocalUsageSource(rawValue: sqliteText(stmt, index: 0) ?? ""),
+                  let provider = LocalUsageProvider(rawValue: sqliteText(stmt, index: 2) ?? ""),
+                  let hour = isoFromString(sqliteText(stmt, index: 5) ?? "") else { throw UsageWriteFailure.invalid }
+            observations.append(LocalUsageObservation(source: source, id: sqliteText(stmt, index: 1) ?? "", provider: provider,
+                sessionID: sqliteText(stmt, index: 3) ?? "", requestID: sqliteText(stmt, index: 4) ?? "", hour: hour,
+                tokens: Int(sqlite3_column_int64(stmt, 6)),
+                estimatedCostUSD: sqlite3_column_type(stmt, 7) == SQLITE_NULL ? nil : sqlite3_column_double(stmt, 7)))
+        }
+        var totals: [Key: Total] = [:]
+        for observation in LocalUsageSnapshot.deduplicated(observations) {
+            let key = Key(hour: iso(observation.hour), provider: observation.provider)
+            var total = totals[key] ?? Total()
+            let (tokens, overflow) = total.tokens.addingReportingOverflow(observation.tokens)
+            guard !overflow else { throw UsageWriteFailure.invalid }
+            total.tokens = tokens
+            if let previous = total.cost, let cost = observation.estimatedCostUSD {
+                total.cost = previous + cost
+            } else { total.cost = nil }
+            totals[key] = total
+        }
+        var managed = Set<Key>()
+        try usageRead("SELECT hour,provider FROM usage_managed_hours") { stmt in
+            guard let provider = LocalUsageProvider(rawValue: sqliteText(stmt, index: 1) ?? "") else { throw UsageWriteFailure.invalid }
+            managed.insert(Key(hour: sqliteText(stmt, index: 0) ?? "", provider: provider))
+        }
+        var existing: [Key: Int] = [:]
+        try usageRead("SELECT hour,deepseek_input_tokens,openai_input_tokens FROM quota_snapshots") { stmt in
+            let hour = sqliteText(stmt, index: 0) ?? ""
+            if sqlite3_column_type(stmt, 1) != SQLITE_NULL { existing[Key(hour: hour, provider: .deepseek)] = Int(sqlite3_column_int64(stmt, 1)) }
+            if sqlite3_column_type(stmt, 2) != SQLITE_NULL { existing[Key(hour: hour, provider: .openAI)] = Int(sqlite3_column_int64(stmt, 2)) }
+        }
+        for key in Set(totals.keys).union(managed) {
+            let total = totals[key] ?? Total()
+            if !managed.contains(key), let old = existing[key] {
+                // Legacy rows have no source provenance. Never reduce an opaque
+                // complete total on migration, or adopt it during a failed read.
+                if preserveLegacy || old > total.tokens { continue }
+            }
+            let tokenColumn = key.provider == .openAI ? "openai_input_tokens" : "deepseek_input_tokens"
+            let costColumns = key.provider == .openAI ? ",openai_estimated_cost_usd" : ""
+            let costValue = key.provider == .openAI ? ",?" : ""
+            let costUpdate = key.provider == .openAI ? ",openai_estimated_cost_usd=excluded.openai_estimated_cost_usd" : ""
+            try usageWrite("""
+                INSERT INTO quota_snapshots(hour,\(tokenColumn),source,recorded_at\(costColumns)) VALUES(?,?,'usage',?\(costValue))
+                ON CONFLICT(hour) DO UPDATE SET \(tokenColumn)=excluded.\(tokenColumn)\(costUpdate)
+                """) { stmt in
+                bindText(stmt, index: 1, key.hour)
+                sqlite3_bind_int64(stmt, 2, Int64(total.tokens))
+                bindText(stmt, index: 3, iso(Date()))
+                if key.provider == .openAI, let cost = total.cost { sqlite3_bind_double(stmt, 4, cost) }
+            }
+            try usageWrite("INSERT OR IGNORE INTO usage_managed_hours(hour,provider) VALUES(?,?)") { stmt in
+                bindText(stmt, index: 1, key.hour)
+                bindText(stmt, index: 2, key.provider.rawValue)
+            }
+        }
     }
 
     public func markMonthEmailed(yyyyMM: String) {

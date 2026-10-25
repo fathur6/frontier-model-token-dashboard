@@ -133,4 +133,59 @@ final class QuotaLedgerServiceTests: XCTestCase {
 
         XCTAssertEqual(service.ledger.recentSnapshots(limit: 1).first?.deepseekInputTokens, 321)
     }
+
+    func testUnifiedMultiClientRecoveryProjectsNonzeroPriorHoursAndSurvivesRepeatedPartialRefresh() throws {
+        let dir = FileManager.default.temporaryDirectory.appendingPathComponent("DAF-26-service-\(UUID())")
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let now = Date(timeIntervalSince1970: 1_800_000_123)
+        let current = Date(timeIntervalSince1970: floor(now.timeIntervalSince1970 / 3_600) * 3_600)
+        let old = current.addingTimeInterval(-3_600)
+        let openCode = LocalUsageObservation(source:.openCode,id:"v2-message",provider:.openAI,sessionID:"opencode",hour:old,tokens:100)
+        let codex = LocalUsageObservation(source:.codex,id:"codex-event",provider:.deepseek,sessionID:"codex",hour:old,tokens:50)
+        let hermes = LocalUsageObservation(source:.hermes,id:"cumulative-row",provider:.openAI,sessionID:"independent-hermes",hour:old,tokens:20)
+        let good = LocalUsageSnapshot(from:current.addingTimeInterval(-719*3_600),through:now,batches:[
+            LocalUsageBatch(source:.openCode,availability:.available,observations:[openCode]),
+            LocalUsageBatch(source:.codex,availability:.available,observations:[codex]),
+            LocalUsageBatch(source:.hermes,availability:.available,observations:[hermes])])
+        let service = QuotaLedgerService(ledgerPath:dir.appendingPathComponent("quota.db").path,now:{now},localUsage:{good})
+        let cache = WidgetCache(deepseek:ProviderBalance(balance:10),openAIQuota:OpenAIQuota(remainingPercent:44,resetDate:old.addingTimeInterval(604_800)))
+        for _ in 0..<3 { service.recordRefresh(cache:cache) }
+        let seeded = service.seededCache(from:cache)
+        XCTAssertEqual(seeded.hourlyUsage.reduce(0){$0+$1.openAIInputTokens},120)
+        XCTAssertEqual(seeded.hourlyUsage.reduce(0){$0+$1.deepseekInputTokens},50)
+        XCTAssertEqual(seeded.deepseekBalanceHistory.last?.remainingRM,45)
+        XCTAssertEqual(seeded.openAIQuotaHistory.last?.remainingPercent,44)
+        XCTAssertNil(service.activeOpenAIEstimatedCost(resetDate:cache.openAIQuota?.resetDate,now:now))
+        XCTAssertNil(seeded.usageHistoryWarning)
+        let projection = UsageHistoryChartProjection(buckets:seeded.hourlyUsage,xDomain:ChartWindow.range(endingAt:current,offsetHours:0))
+        XCTAssertTrue(projection.series.allSatisfy { $0.points.contains { $0.plotTokens > 0 } })
+
+        let partial = LocalUsageSnapshot(from:good.from,through:now,batches:[
+            LocalUsageBatch(source:.openCode,availability:.failed),
+            LocalUsageBatch(source:.codex,availability:.available,observations:[codex]),
+            LocalUsageBatch(source:.hermes,availability:.missing)])
+        service.recordRefresh(cache:cache,usage:partial)
+        let retained = service.seededCache(from:cache)
+        XCTAssertEqual(retained.hourlyUsage,seeded.hourlyUsage)
+        XCTAssertNotNil(retained.usageHistoryWarning)
+        let roundtrip = try JSONDecoder().decode(WidgetCache.self,from:JSONEncoder().encode(retained))
+        XCTAssertEqual(roundtrip.usageHistoryWarning,retained.usageHistoryWarning)
+    }
+
+    func testUsageOnlyRefreshStillPrunesExpiredProvenanceAndHistory() throws {
+        let dir = FileManager.default.temporaryDirectory.appendingPathComponent("DAF-26-retention-\(UUID())")
+        defer { try? FileManager.default.removeItem(at: dir) }
+        var clock = Date(timeIntervalSince1970:1_800_000_123)
+        let old = clock
+        let observation = LocalUsageObservation(source:.codex,id:"old",provider:.openAI,hour:old,tokens:100)
+        let initial = LocalUsageSnapshot(from:old.addingTimeInterval(-3_600),through:old,
+            batches:[LocalUsageBatch(source:.codex,availability:.available,observations:[observation])])
+        let service = QuotaLedgerService(ledgerPath:dir.appendingPathComponent("quota.db").path,now:{clock},localUsage:{initial})
+        service.recordRefresh(cache:WidgetCache())
+        XCTAssertEqual(service.ledger.count(),1)
+        clock = Calendar.current.date(byAdding:.month,value:13,to:old)!
+        service.recordRefresh(cache:WidgetCache(),usage:LocalUsageSnapshot(from:clock.addingTimeInterval(-30*24*3_600),through:clock,
+            batches:[LocalUsageBatch(source:.codex,availability:.available)]))
+        XCTAssertEqual(service.ledger.count(),0)
+    }
 }

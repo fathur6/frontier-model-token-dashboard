@@ -30,7 +30,7 @@ final class MenuContentTests: XCTestCase {
         }
         state.update(with: WidgetCache(openAIQuota: OpenAIQuota(fiveHourRemainingPercent: 90, fiveHourResetDate: week)))
         XCTAssertEqual(anchors, [week, week])
-        XCTAssertEqual(state.openAIEstimatedCost, 12)
+        XCTAssertNil(state.openAIEstimatedCost)
     }
 
     func testUnavailableBarHasNeitherUsageFillNorInventedMarker() {
@@ -61,22 +61,23 @@ final class MenuContentTests: XCTestCase {
     func testEstimatedCostTextUsesEstimateLabel() {
         XCTAssertEqual(MenuContent.estimatedCostText(12.345), "Est. $12.35")
         XCTAssertEqual(MenuContent.estimatedCostText(0), "Est. $0.00")
+        XCTAssertEqual(MenuContent.estimatedCostText(nil), "Est. unavailable")
     }
 
-    func testMenuBarStateRetainsEstimateWhenResetDateMissing() {
+    func testMenuBarStateClearsUnanchoredEstimateWhenResetDateMissing() {
         let state = MenuBarState(estimatedCost: { _ in 42.0 })
         state.update(with: WidgetCache(openAIQuota: OpenAIQuota(remainingPercent: 50, resetDate: Date(timeIntervalSince1970: 2_000_000_000))))
         XCTAssertEqual(state.openAIEstimatedCost, 42.0)
 
         state.update(with: WidgetCache(openAIQuota: OpenAIQuota(remainingPercent: 50, resetDate: nil)))
-        XCTAssertEqual(state.openAIEstimatedCost, 42.0)
+        XCTAssertNil(state.openAIEstimatedCost)
     }
 
-    func testMenuBarStateShowsZeroEstimateWhenNeverComputed() {
+    func testMenuBarStateShowsUnavailableEstimateWhenNeverComputed() {
         let state = MenuBarState()
         state.update(with: WidgetCache(openAIQuota: OpenAIQuota(remainingPercent: 50, resetDate: nil)))
-        XCTAssertEqual(state.openAIEstimatedCost, 0.0)
-        XCTAssertEqual(MenuContent.estimatedCostText(state.openAIEstimatedCost), "Est. $0.00")
+        XCTAssertNil(state.openAIEstimatedCost)
+        XCTAssertEqual(MenuContent.estimatedCostText(state.openAIEstimatedCost), "Est. unavailable")
     }
 
     func testMenuBarStateUpdateKeepsDeepSeekBalanceHistory() {

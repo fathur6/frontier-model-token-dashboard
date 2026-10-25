@@ -38,36 +38,38 @@ final class DeepSeekUsageCollectorTests: XCTestCase {
             deepseekOpenCodeInsert(seconds: currentHourSeconds, input: 100, read: 20, write: 5)
         ])
         try makeDatabase(at: hermes, statements: [
-            "CREATE TABLE session_model_usage (billing_provider TEXT, input_tokens INTEGER, cache_read_tokens INTEGER, cache_write_tokens INTEGER, last_seen INTEGER)",
-            "INSERT INTO session_model_usage VALUES ('deepseek', 10, 2, 1, \(currentHourSeconds))"
+            "CREATE TABLE session_model_usage (model TEXT, billing_provider TEXT, input_tokens INTEGER, cache_read_tokens INTEGER, cache_write_tokens INTEGER, last_seen INTEGER)",
+            "INSERT INTO session_model_usage VALUES ('deepseek-flash', 'deepseek', 10, 2, 1, \(currentHourSeconds))"
         ])
 
         let collector = DeepSeekUsageCollector(
             now: now,
             openCodeDatabasePath: openCode.path,
-            hermesDatabasePath: hermes.path
+            hermesDatabasePath: hermes.path,
+            codexRoots: []
         )
 
         let totals = collector.hourlyTotals()
         XCTAssertEqual(totals?[currentHour]?.inputTokens, 100 + 20 + 5 + 10 + 2 + 1)
     }
 
-    func testHourlyTotalsAreUnavailableWhenOpenCodeSourceIsMissing() throws {
+    func testMissingOptionalOpenCodeDoesNotBlockHermes() throws {
         let hermes = root.appendingPathComponent("hermes.db")
         try makeDatabase(at: hermes, statements: [
-            "CREATE TABLE session_model_usage (billing_provider TEXT, input_tokens INTEGER, cache_read_tokens INTEGER, cache_write_tokens INTEGER, last_seen INTEGER)"
+            "CREATE TABLE session_model_usage (model TEXT, billing_provider TEXT, input_tokens INTEGER, cache_read_tokens INTEGER, cache_write_tokens INTEGER, last_seen INTEGER)"
         ])
 
         let collector = DeepSeekUsageCollector(
             now: now,
             openCodeDatabasePath: root.appendingPathComponent("missing-opencode.db").path,
-            hermesDatabasePath: hermes.path
+            hermesDatabasePath: hermes.path,
+            codexRoots: []
         )
 
-        XCTAssertNil(collector.hourlyTotals())
+        XCTAssertEqual(collector.hourlyTotals(), [:])
     }
 
-    func testHourlyTotalsAreUnavailableWhenHermesSourceIsMissing() throws {
+    func testMissingOptionalHermesDoesNotBlockOpenCode() throws {
         let openCode = root.appendingPathComponent("opencode.db")
         try makeDatabase(at: openCode, statements: [
             "CREATE TABLE message (id TEXT, session_id TEXT, time_created INTEGER, data TEXT)"
@@ -76,10 +78,11 @@ final class DeepSeekUsageCollectorTests: XCTestCase {
         let collector = DeepSeekUsageCollector(
             now: now,
             openCodeDatabasePath: openCode.path,
-            hermesDatabasePath: root.appendingPathComponent("missing-hermes.db").path
+            hermesDatabasePath: root.appendingPathComponent("missing-hermes.db").path,
+            codexRoots: []
         )
 
-        XCTAssertNil(collector.hourlyTotals())
+        XCTAssertEqual(collector.hourlyTotals(), [:])
     }
 
     private func deepseekOpenCodeInsert(seconds: Int64, input: Int, read: Int, write: Int) -> String {

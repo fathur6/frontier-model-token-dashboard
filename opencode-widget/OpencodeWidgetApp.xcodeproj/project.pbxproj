@@ -7,6 +7,8 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+        112233445566778899AABB01 /* LocalUsage.swift in Sources */ = {isa = PBXBuildFile; fileRef = 112233445566778899AABB02 /* LocalUsage.swift */; };
+        112233445566778899AABB03 /* LocalUsageReader.swift in Sources */ = {isa = PBXBuildFile; fileRef = 112233445566778899AABB04 /* LocalUsageReader.swift */; };
 		00F571155B463D7F0B0948B7 /* ProviderCredentialResolver.swift in Sources */ = {isa = PBXBuildFile; fileRef = C81D6CB5A6E5D9EA8F8967B4 /* ProviderCredentialResolver.swift */; };
 		01F77A1B1F071BE48193AF5A /* UsageHistoryFetcher.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8F719CE050DFA461FB66FEC8 /* UsageHistoryFetcher.swift */; };
 		241926188A6E505F83C4EE7B /* DeepSeekRemainingChart.swift in Sources */ = {isa = PBXBuildFile; fileRef = BD25B4F10876E303DB626E74 /* DeepSeekRemainingChart.swift */; };
@@ -34,6 +36,8 @@
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
+        112233445566778899AABB02 /* LocalUsage.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LocalUsage.swift; sourceTree = "<group>"; };
+        112233445566778899AABB04 /* LocalUsageReader.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LocalUsageReader.swift; sourceTree = "<group>"; };
 		059695BD00AB2842E9B8F099 /* ProviderSettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProviderSettingsView.swift; sourceTree = "<group>"; };
 		0912346CB928974051E1022E /* DataStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DataStore.swift; sourceTree = "<group>"; };
 		0D7C764A8EA855A5C02F27E8 /* QuotaLedgerService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = QuotaLedgerService.swift; sourceTree = "<group>"; };
@@ -70,6 +74,7 @@
 				711320B0D3258720311ED9F3 /* DataFetcher.swift */,
 				BD25B4F10876E303DB626E74 /* DeepSeekRemainingChart.swift */,
 				219662771A29BCB469AD2543 /* DeepSeekUsageCollector.swift */,
+                112233445566778899AABB04 /* LocalUsageReader.swift */,
 				FC128F7F9E1CBA252DDF54E4 /* OpenAIQuotaFetcher.swift */,
 				D0F26C5214DD65B6A022CB5E /* OpenAIUsageCollector.swift */,
 				D8D98E2BDD07CB050712D068 /* OpencodeWidgetApp.swift */,
@@ -98,6 +103,7 @@
 			children = (
 				6F74B560C20096D25F2577DB /* AuthReader.swift */,
 				0912346CB928974051E1022E /* DataStore.swift */,
+                112233445566778899AABB02 /* LocalUsage.swift */,
 				5D411F9C4A2DCADC9505ECCB /* Models.swift */,
 				C81D6CB5A6E5D9EA8F8967B4 /* ProviderCredentialResolver.swift */,
 				2F186BCE7084D37E7240C12B /* ProviderCredentialStore.swift */,
@@ -218,6 +224,8 @@
 			buildActionMask = 2147483647;
 			files = (
 				80E136D28F9E4EA3EFBD33ED /* AuthReader.swift in Sources */,
+                112233445566778899AABB01 /* LocalUsage.swift in Sources */,
+                112233445566778899AABB03 /* LocalUsageReader.swift in Sources */,
 				4F7BE9F4689252E46690542A /* ChartWindow.swift in Sources */,
 				F107D2E927D2FD958357A57B /* DataFetcher.swift in Sources */,
 				D3C4003C82352CDD5F4E476D /* DataStore.swift in Sources */,
@@ -371,13 +379,13 @@
 				CODE_SIGN_ENTITLEMENTS = OpencodeWidgetApp/Entitlements.plist;
 				CODE_SIGN_STYLE = Automatic;
 				COMBINE_HIDPI_IMAGES = YES;
-				CURRENT_PROJECT_VERSION = 6;
+				CURRENT_PROJECT_VERSION = 7;
 				INFOPLIST_FILE = OpencodeWidgetApp/Info.plist;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/../Frameworks",
 				);
-				MARKETING_VERSION = 1.5.0;
+				MARKETING_VERSION = 1.5.1;
 				PRODUCT_BUNDLE_IDENTIFIER = com.opencode.widget.app;
 				SDKROOT = macosx;
 			};
@@ -390,13 +398,13 @@
 				CODE_SIGN_ENTITLEMENTS = OpencodeWidgetApp/Entitlements.plist;
 				CODE_SIGN_STYLE = Automatic;
 				COMBINE_HIDPI_IMAGES = YES;
-				CURRENT_PROJECT_VERSION = 6;
+				CURRENT_PROJECT_VERSION = 7;
 				INFOPLIST_FILE = OpencodeWidgetApp/Info.plist;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/../Frameworks",
 				);
-				MARKETING_VERSION = 1.5.0;
+				MARKETING_VERSION = 1.5.1;
 				PRODUCT_BUNDLE_IDENTIFIER = com.opencode.widget.app;
 				SDKROOT = macosx;
 			};

@@ -20,15 +20,16 @@ final class OpenAIUsageCollectorTests: XCTestCase {
         root = nil
     }
 
-    func testHourlyTotalPricesSupportedModelsAndExcludesUnknownModels() {
+    func testHourlyTotalCountsUnknownModelsButMarksMixedPriceUnavailable() {
         let hour = Date(timeIntervalSince1970: 0)
         let samples = [
             OpenAIUsageSample(hour: hour, modelID: "gpt-5.6-terra", inputTokens: 1_000_000, cachedInputTokens: 0, cacheWriteTokens: 0, outputTokens: 0, source: .openCode, sessionID: "a"),
             OpenAIUsageSample(hour: hour, modelID: "unknown", inputTokens: 1_000_000, cachedInputTokens: 0, cacheWriteTokens: 0, outputTokens: 0, source: .codex, sessionID: "b")
         ]
 
-        XCTAssertEqual(OpenAIUsageCollector.aggregate(samples)[hour]?.inputTokens, 1_000_000)
-        XCTAssertEqual(OpenAIUsageCollector.aggregate(samples)[hour]?.estimatedCostUSD, 2)
+        XCTAssertEqual(OpenAIUsageCollector.aggregate(samples)[hour]?.inputTokens, 2_000_000)
+        XCTAssertNil(OpenAIUsageCollector.aggregate(samples)[hour]?.estimatedCostUSD)
+        XCTAssertEqual(OpenAIUsageCollector.aggregate([samples[0]])[hour]?.estimatedCostUSD, 2)
     }
 
     func testDirectCodexSampleWinsOverMirroredHermesSession() {
@@ -47,22 +48,22 @@ final class OpenAIUsageCollectorTests: XCTestCase {
         XCTAssertEqual(OpenAIUsageCollector.aggregate([openCode, hermes])[hour]?.inputTokens, 100)
     }
 
-    func testHourlyTotalsAreUnavailableWhenOpenCodeSourceIsMissing() throws {
+    func testOptionalMissingOpenCodeDoesNotBlockInstalledApps() throws {
         let collector = try makeCollector(openCodePath: root.appendingPathComponent("missing-opencode.db").path)
 
-        XCTAssertNil(collector.hourlyTotals())
+        XCTAssertEqual(collector.hourlyTotals(), [:])
     }
 
-    func testHourlyTotalsAreUnavailableWhenCodexSourceIsMissing() throws {
+    func testOptionalMissingCodexDoesNotBlockInstalledApps() throws {
         let collector = try makeCollector(codexRoots: [root.appendingPathComponent("missing-codex")])
 
-        XCTAssertNil(collector.hourlyTotals())
+        XCTAssertEqual(collector.hourlyTotals(), [:])
     }
 
-    func testHourlyTotalsAreUnavailableWhenHermesSourceIsMissing() throws {
+    func testOptionalMissingHermesDoesNotBlockInstalledApps() throws {
         let collector = try makeCollector(hermesPath: root.appendingPathComponent("missing-hermes.db").path)
 
-        XCTAssertNil(collector.hourlyTotals())
+        XCTAssertEqual(collector.hourlyTotals(), [:])
     }
 
     func testHourlyTotalsAreUnavailableWhenCodexSessionFileCannotBeRead() throws {

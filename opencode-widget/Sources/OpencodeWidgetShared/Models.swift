@@ -256,8 +256,9 @@ public struct WidgetCache: Codable {
     public var hourlyUsage: [HourlyUsageBucket]
     public var deepseekBalanceHistory: [DeepSeekBalanceSnapshot]
     public var openAIQuotaHistory: [OpenAIQuotaSnapshot]
+    public var usageHistoryWarning: String?
 
-    public init(lastUpdated: Date = Date(), deepseek: ProviderBalance = ProviderBalance(), minimax: ProviderBalance = ProviderBalance(), minimaxUsage: MiniMaxUsage? = nil, minimaxCredit: Double? = nil, minimaxCreditFetched: Date? = nil, dailyUsage: [DailyUsageRow] = [], openAIQuota: OpenAIQuota? = nil, hourlyUsage: [HourlyUsageBucket] = [], deepseekBalanceHistory: [DeepSeekBalanceSnapshot] = [], openAIQuotaHistory: [OpenAIQuotaSnapshot] = []) {
+    public init(lastUpdated: Date = Date(), deepseek: ProviderBalance = ProviderBalance(), minimax: ProviderBalance = ProviderBalance(), minimaxUsage: MiniMaxUsage? = nil, minimaxCredit: Double? = nil, minimaxCreditFetched: Date? = nil, dailyUsage: [DailyUsageRow] = [], openAIQuota: OpenAIQuota? = nil, hourlyUsage: [HourlyUsageBucket] = [], deepseekBalanceHistory: [DeepSeekBalanceSnapshot] = [], openAIQuotaHistory: [OpenAIQuotaSnapshot] = [], usageHistoryWarning: String? = nil) {
         self.lastUpdated = lastUpdated
         self.deepseek = deepseek
         self.minimax = minimax
@@ -269,11 +270,13 @@ public struct WidgetCache: Codable {
         self.hourlyUsage = hourlyUsage
         self.deepseekBalanceHistory = deepseekBalanceHistory
         self.openAIQuotaHistory = openAIQuotaHistory
+        self.usageHistoryWarning = usageHistoryWarning
     }
 
     private enum CodingKeys: String, CodingKey {
         case lastUpdated, deepseek, minimax, minimaxUsage, minimaxCredit
         case minimaxCreditFetched, dailyUsage, openAIQuota, hourlyUsage, deepseekBalanceHistory, openAIQuotaHistory
+        case usageHistoryWarning
     }
 
     public init(from decoder: Decoder) throws {
@@ -289,6 +292,7 @@ public struct WidgetCache: Codable {
         hourlyUsage = try values.decodeIfPresent([HourlyUsageBucket].self, forKey: .hourlyUsage) ?? []
         deepseekBalanceHistory = try values.decodeIfPresent([DeepSeekBalanceSnapshot].self, forKey: .deepseekBalanceHistory) ?? []
         openAIQuotaHistory = try values.decodeIfPresent([OpenAIQuotaSnapshot].self, forKey: .openAIQuotaHistory) ?? []
+        usageHistoryWarning = try values.decodeIfPresent(String.self, forKey: .usageHistoryWarning)
     }
 
     public var isEmpty: Bool {
