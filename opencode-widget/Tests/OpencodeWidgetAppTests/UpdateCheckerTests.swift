@@ -39,7 +39,7 @@ final class UpdateCheckerTests: XCTestCase {
     // MARK: - Manifest validation
 
     private func manifest(latest: String = "1.5.2", build: Int = 8,
-                          url: String = "https://github.com/fathur6/opencode-deepseek-minimax-macwidget/releases/tag/v1.5.2",
+                          url: String = "https://github.com/fathur6/frontier-model-token-dashboard/releases/tag/v1.5.2",
                           notes: String? = "  Fixes chart gaps  ") -> Data {
         var object: [String: Any] = ["latest": latest, "build": build, "url": url]
         if let notes { object["notes"] = notes }
@@ -66,7 +66,7 @@ final class UpdateCheckerTests: XCTestCase {
 
     func testUnsafeOrMalformedManifestsAreRejected() {
         let unsafeURLs = [
-            "http://github.com/fathur6/opencode-deepseek-minimax-macwidget/releases",
+            "http://github.com/fathur6/frontier-model-token-dashboard/releases",
             "https://example.com/releases",
             "https://github.com.evil.example/releases",
             "file:///Applications/OpencodeWidgetApp.app",

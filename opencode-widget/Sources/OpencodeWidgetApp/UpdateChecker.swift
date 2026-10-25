@@ -91,7 +91,7 @@ enum AppVersion {
 @MainActor
 final class UpdateService {
     static let shared = UpdateService()
-    static let manifestURL = URL(string: "https://raw.githubusercontent.com/fathur6/opencode-deepseek-minimax-macwidget/main/version.json")!
+    static let manifestURL = URL(string: "https://raw.githubusercontent.com/fathur6/frontier-model-token-dashboard/main/version.json")!
     static let lastCheckKey = "UpdateService.lastCheck"
     static let skippedVersionKey = "UpdateService.skippedVersion"
 

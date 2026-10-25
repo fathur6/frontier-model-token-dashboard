@@ -1,6 +1,6 @@
-# opencode-deepseek-minimax-macwidget
+# Frontier Model Token Dashboard
 
-macOS menu bar app that tracks DeepSeek and MiniMax API usage in real time. Shows balance, credit, and token usage at a glance.
+macOS menu bar app that tracks DeepSeek, MiniMax and ChatGPT Plus usage in one place: balances, remaining quota, and token trends across OpenCode, Codex and Hermes.
 
 ## Credits
 

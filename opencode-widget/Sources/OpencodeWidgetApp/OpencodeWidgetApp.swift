@@ -349,12 +349,36 @@ struct MenuContent: View {
                 Divider()
                 Button("Quit") { NSApp.terminate(nil) }
                     .buttonStyle(.plain).padding(.horizontal, 12).padding(.vertical, 4).keyboardShortcut("q")
+                Divider()
+                versionLabel
+                    .padding(.top, 2)
             }
             .padding(.bottom, 6)
         }
         .frame(width: 220)
         .onChange(of: menuState.hourlyUsage) { _, history in
             chartOffsetHours = min(chartOffsetHours, ChartWindow.maximumOffset(for: history.count))
+        }
+    }
+
+    /// Version readout in the same compact monospaced style Aman uses in Hermes:
+    /// `# v1.5.3 (build 9)`, switching to `# v1.5.3 (update)` when a release is waiting.
+    @ViewBuilder
+    private var versionLabel: some View {
+        if let update = menuState.availableUpdate {
+            Button {
+                NSWorkspace.shared.open(update.releaseURL)
+            } label: {
+                Text("# v\(AppVersion.short) (update)")
+                    .font(.system(.caption2, design: .monospaced))
+                    .foregroundStyle(.green)
+            }
+            .buttonStyle(.plain)
+            .help("Open the v\(update.version) release page")
+        } else {
+            Text("# v\(AppVersion.short) (build \(AppVersion.build))")
+                .font(.system(.caption2, design: .monospaced))
+                .foregroundStyle(.secondary)
         }
     }
 
