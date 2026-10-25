@@ -106,6 +106,29 @@ so gaps appear after the next refresh.
 
 See [docs/releases/v1.5.1.md](docs/releases/v1.5.1.md) for release notes.
 
+### v1.5.2: In-app update prompt
+
+The menu now tells you when a newer release exists. Once a day the app fetches
+`version.json` from this repository, compares it with the running bundle, and
+shows a compact **vX.Y.Z available** row that opens the GitHub release page.
+Dismissing a version hides it until an even newer one appears. Checks are
+silent, run off the UI thread, and never touch quota, usage or cached history;
+malformed manifests and non-HTTPS/non-GitHub links are ignored.
+
+See [docs/releases/v1.5.2.md](docs/releases/v1.5.2.md) for release notes.
+
+## Publishing a release
+
+1. Bump `CFBundleShortVersionString` / `CFBundleVersion` in
+   `opencode-widget/project.yml`, `opencode-widget/OpencodeWidgetApp/Info.plist`
+   and `OpencodeWidgetApp.xcodeproj/project.pbxproj` (never lower the build).
+2. Run `swift test`, then a Release build, then `opencode-widget/package-dmg.sh`.
+3. Update `version.json` at the repository root with the new `latest`, `build`,
+   GitHub release `url` and a one-line `notes` summary. Commit it with the code.
+4. Tag `vX.Y.Z`, push, and publish the GitHub release with the DMG attached.
+5. Existing installs see the prompt within a day (or on the next launch after
+   that interval) and can update from the release page.
+
 
 ## API Approach
 

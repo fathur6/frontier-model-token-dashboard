@@ -13,6 +13,7 @@ class MenuBarState {
     var openAIQuota: OpenAIQuota?
     var openAIEstimatedCost: Double?
     var usageHistoryWarning: String?
+    var availableUpdate: UpdateInfo?
     var hourlyUsage: [HourlyUsageBucket] = []
     var deepseekBalanceHistory: [DeepSeekBalanceSnapshot] = []
     var openAIQuotaHistory: [OpenAIQuotaSnapshot] = []
@@ -130,6 +131,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             guard let self else { return }
             updateMenuState(with: seeded)
             updateStatusIcon()
+            await UpdateService.shared.publishAvailability()
         }
     }
 
@@ -301,6 +303,28 @@ struct MenuContent: View {
                     .padding(.horizontal, 12).padding(.top, 4)
             }
 
+            if let update = menuState.availableUpdate {
+                HStack(spacing: 6) {
+                    Image(systemName: "arrow.down.circle")
+                    Text("v\(update.version) available")
+                    Spacer()
+                    Button("Update") { NSWorkspace.shared.open(update.releaseURL) }
+                        .buttonStyle(.plain)
+                    Button {
+                        UpdateService.shared.skip(version: update.version)
+                        menuState.availableUpdate = nil
+                    } label: {
+                        Image(systemName: "xmark")
+                    }
+                    .buttonStyle(.plain)
+                    .foregroundStyle(.secondary)
+                }
+                .font(.caption2)
+                .padding(.horizontal, 12)
+                .padding(.top, 4)
+                .help(update.notes.isEmpty ? "Open the release page" : update.notes)
+            }
+
             RemainingQuotaChart(
                 deepseekSnapshots: balanceSnapshots,
                 openAISnapshots: openAISnapshots,
@@ -367,6 +391,7 @@ struct MenuContent: View {
             let seeded = QuotaLedgerService.shared.seededCache(from: cache)
             DataStore.save(cache: seeded)
             MenuBarState.shared.update(with: seeded)
+            await UpdateService.shared.publishAvailability()
         }
     }
 }

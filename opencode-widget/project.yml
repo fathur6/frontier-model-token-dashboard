@@ -22,12 +22,12 @@ targets:
       properties:
         CFBundleIconFile: AppIcon
         LSUIElement: true
-        CFBundleShortVersionString: "1.5.1"
-        CFBundleVersion: "7"
+        CFBundleShortVersionString: "1.5.2"
+        CFBundleVersion: "8"
     entitlements:
       path: OpencodeWidgetApp/Entitlements.plist
     settings:
       PRODUCT_BUNDLE_IDENTIFIER: com.opencode.widget.app
       CODE_SIGN_STYLE: Automatic
-      MARKETING_VERSION: "1.5.1"
-      CURRENT_PROJECT_VERSION: "7"
+      MARKETING_VERSION: "1.5.2"
+      CURRENT_PROJECT_VERSION: "8"
