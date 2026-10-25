@@ -94,6 +94,18 @@ cache, and the local ledger continue to run unchanged.
 
 See [docs/releases/v1.5.0.md](docs/releases/v1.5.0.md) for release notes.
 
+### v1.5.1: Shared-client usage trends restored
+
+The Usage chart plots observed local token history again after the OpenCode data
+store moved to `session_message`. Usage is now combined across **OpenCode, Codex
+and Hermes** regardless of which app is in front, since all three can consume the
+same DeepSeek and OpenAI accounts. Tokens are counted independently of model
+pricing (unpriced models still plot, and the cost estimate reports
+**unavailable**), and recovered historical hours are written back idempotently
+so gaps appear after the next refresh.
+
+See [docs/releases/v1.5.1.md](docs/releases/v1.5.1.md) for release notes.
+
 
 ## API Approach
 
